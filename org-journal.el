@@ -1665,6 +1665,33 @@ If STR is empty, search for all entries using `org-journal-time-prefix'."
          (buf (org-journal-read-or-display-entry time t)))
     (set-window-point (get-buffer-window buf) point)))
 
+(defun org-journal-re-encrypt-journals (recipient)
+  "Re-encrypt journal files.
+
+Note:
+When you are synchronizing your journal files to an external service, keep in mind
+that the file will be decrypted into the same directory before encrypted again."
+  (interactive (list (epa-select-keys (epg-make-context epa-protocol)
+			              "Select new recipients for encryption.
+If no one is selected, symmetric encryption will be performed.  ")))
+
+  (unless org-journal-encrypt-journal
+    (error "org-journal encryption not enabled."))
+
+  (let ((epa-file-encrypt-to recipient)
+        buf file-name)
+    (dolist (journal (org-journal-list-files))
+      (setq buf (get-file-buffer journal)
+            file-name (file-name-sans-extension journal))
+      (when (and buf
+                 (buffer-modified-p buf)
+                 (y-or-n-p (format "Journal \"%s\" modified, save before re-encryption?"
+                                   (file-name-nondirectory journal))))
+        (save-buffer buf))
+      (epa-decrypt-file journal file-name)
+      (epa-encrypt-file file-name epa-file-encrypt-to)
+      (delete-file file-name))))
+
 (defun org-journal-decrypt ()
   "Decrypt journal entry at point."
   (when org-journal-enable-encryption
