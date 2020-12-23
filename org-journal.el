@@ -2,27 +2,19 @@
 
 ;; Author: Bastian Bechtold
 ;;         Christian Schwarzgruber
+;;         Oliver Richardson (fork)
 
-;; URL: http://github.com/bastibe/org-journal
+;; URL: http://github.com/orichardson/org-journal
 ;; Version: 2.1.1
 ;; Package-Requires: ((emacs "25.1") (org "9.1"))
 
 ;;; Commentary:
-
-;; Adapted from http://www.emacswiki.org/PersonalDiary
+;; Orignally adapted from http://www.emacswiki.org/PersonalDiary
+;; And in turn from http://githublcom/baptiste/org-journal
 
 ;; Functions to maintain a simple personal diary / journal in Emacs.
 ;; Feel free to use, modify and improve the code! - mtvoid, bastibe
 
-;; This file is also available from marmalade as
-;; http://marmalade-repo.org/packages/journal. After installing, add
-;; the line (require 'org-journal) to your .emacs or init.el to activate
-;; it. You also need to specify the directory where your journal files
-;; will be saved. You can do this by setting the variable journal-dir
-;; (remember to add a trailing slash). journal-dir is also a
-;; customizable variable. The default value for journal-dir is
-;; ~/Documents/journal/.
-;;
 ;; Inside the journal directory, a separate file is created for each
 ;; day with a journal entry, with a file name in the format YYYYMMDD
 ;; (this is customizable). Each journal entry is an org-mode file that
@@ -164,14 +156,16 @@ Currently supported placeholders are:
 
 %Y is the year as decimal number, including the century.
 %m is the month as a decimal number (range 01 to 12).
+%M is the month as a 3-letter acronym (range 01 to 12).
 %d is the day as a decimal number (range 01 to 31).
 %V is the ISO 8601 week number as a decimal number (range 01 to 53).
 %a is the locale’s abbreviated name of the day of week, %A the full name.
 %b is the locale's abbreviated name of the month, %B the full name.
-%F is the ISO 8601 date format (equivalent to \"%Y-%m-%d\")."
+%F is the ISO 8601 date format (equivalent to \"%Y-%m-%d\").
+%X is Oli's prefered format (equivalent to \"%d %b %Y\"))"
   :type 'string)
 
-(defcustom org-journal-date-format "%A, %x"
+(defcustom org-journal-date-format "%A, %b"
   "Format string for date entries.
 
 By default \"WEEKDAY, DATE\", where DATE is what Emacs thinks is an
@@ -189,7 +183,7 @@ By default \"WEEKDAY, DATE\", where DATE is what Emacs thinks is an
 appropriate way to format days in your language."
   :type 'string)
 
-(defcustom org-journal-date-prefix "* "
+(defcustom org-journal-date-prefix "* Timeline:  "
   "Prefix for `org-journal-date-format'.
 
 The default prefix creates an `org-mode' heading.  This default
@@ -654,7 +648,7 @@ hook is run."
       (unless (string= entry-path (buffer-file-name))
         (funcall org-journal-find-file entry-path))
 
-      ;; Insure `view-mode' is not active
+      ;; Ensure `view-mode' is not active
       (view-mode -1)
 
       ;; Insert org-journal-file-header
@@ -679,7 +673,7 @@ hook is run."
                        (format-time-string org-journal-date-format time)))))
         (goto-char (point-min))
         (unless (search-forward entry-header nil t)
-          ;; Insure we insert the new journal header at the correct location
+          ;; Ensure we insert the new journal header at the correct location
           (unless (org-journal--daily-p)
             (let ((date (decode-time time))
                   (dates (sort (org-journal--file->calendar-dates (buffer-file-name))
@@ -704,10 +698,10 @@ hook is run."
           (insert entry-header)
           ;; For 'weekly, 'monthly and 'yearly journal entries
           ;; create a "CREATED" property with the current date.
-          (unless (org-journal--daily-p)
+          ;; (unless (org-journal--daily-p)
             (org-set-property "CREATED"
                               (format-time-string
-                               org-journal-created-property-timestamp-format time)))
+                               org-journal-created-property-timestamp-format time)) ;)
           (when org-journal-enable-encryption
             (unless (member org-crypt-tag-matcher (org-get-tags))
               (org-set-tags org-crypt-tag-matcher)))
@@ -748,7 +742,8 @@ hook is run."
         (save-excursion (org-journal--finalize-view)))
 
       (when should-add-entry-p
-        (outline-show-entry)))))
+        (outline-show-entry))
+      (evil-insert-state)  )))
 
 (defvar org-journal--kill-buffer nil
   "Will be set to the `t' if `org-journal--open-entry' is visiting a
@@ -1068,11 +1063,20 @@ With non-nil prefix argument create a regular entry instead of a TODO entry."
           (insert "\n"))
         (org-yank)))))
 
+(defun org-journal-at-timeline? ()
+  "."
+  (s-matches? (org-journal--format->regex org-journal-date-format)
+                              (nth 4 (org-heading-components)) ) )
+
 (defun org-journal--goto-entry (date)
   "Goto DATE entry in current journal file."
   (widen)
   (goto-char (point-min))
   (if (org-journal--daily-p)
+      ;; while we're not looking at a date, go down...
+      (while (not (s-matches? (org-journal--format->regex org-journal-date-format)
+                              (nth 4 (org-heading-components)) ))
+        (outline-next-visible-heading 1))
       (outline-next-visible-heading 1)
     (org-journal--search-forward-created date))
   (org-journal--finalize-view))
@@ -1093,9 +1097,10 @@ With non-nil prefix argument create a regular entry instead of a TODO entry."
   ;; Reverse list for previous search.
   (if prev (reverse dates) dates))
 
+
+;%oli: modifying.
 (defun org-journal--open-entry (&optional prev no-select)
   "Open journal entry.
-
 If PREV is non-nil, open previous entry instead of next.
 If NO-SELECT is non-nil, open it, but don't show it."
   (let* ((calendar-date (if (org-journal--daily-p)
@@ -1104,6 +1109,7 @@ If NO-SELECT is non-nil, open it, but don't show it."
                           (org-journal--entry-date->calendar-date)))
          (view-mode-p view-mode)
          (dates (org-journal-sort-dates (org-journal--list-dates) calendar-date prev)))
+
     (while (and dates (car dates)
                 (or (if prev
                         (org-journal--calendar-date-compare calendar-date (car dates))
@@ -1303,9 +1309,9 @@ from oldest to newest."
       (progn
         (org-up-heading-safe)
         (org-back-to-heading)
-        (outline-hide-other)
-        (outline-show-subtree))
-    (outline-show-all)))
+        (if (not(org-journal--daily-p)) (outline-hide-other))
+        (outline-show-children))
+    ))
 
 ;;;###autoload
 (defun org-journal-read-or-display-entry (time &optional noselect)
@@ -1352,9 +1358,7 @@ is nil or avoid switching when NOSELECT is non-nil."
       (message "No journal entry for this date."))))
 
 (defun org-journal--next-entry (&optional prev)
-  "Go to next entry.
-
-If prev is non-nil open previous entry instead of next."
+  "Go to next entry. PREV: if non-nil open previous entry instead of next."
   (unless (cond
             ((eq major-mode 'calendar-mode)
              (let ((dates (if prev
